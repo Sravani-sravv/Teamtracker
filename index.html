@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Team Availability Tracker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --card:      #1f2232;
+      --border:    #2e3148;
+      --text:      #e8eaf6;
+      --muted:     #7880a0;
+      --available: #22c55e;
+      --busy:      #f97316;
+      --accent:    #6c63ff;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p  { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+
+    /* ── Stats row ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 1.8rem;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+    }
+    .stat-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 4px; }
+    .stat-card .value { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .stat-card .value.green  { color: var(--available); }
+    .stat-card .value.orange { color: var(--busy); }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 1.4rem;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 7px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    .filter-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+    .add-btn {
+      margin-left: auto;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .add-btn:hover { opacity: 0.85; }
+
+    /* ── Grid ── */
+    #team-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    /* ── Member card ── */
+    .member-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      position: relative;
+      transition: transform 0.15s, border-color 0.2s;
+    }
+    .member-card:hover { transform: translateY(-2px); }
+    .member-card.available { border-left: 3px solid var(--available); }
+    .member-card.busy      { border-left: 3px solid var(--busy); }
+
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px;
+    }
+    .badge {
+      font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 600;
+    }
+    .badge.available { background: rgba(34,197,94,0.15); color: var(--available); }
+    .badge.busy      { background: rgba(249,115,22,0.15); color: var(--busy); }
+
+    .member-name { font-size: 15px; font-weight: 600; }
+    .member-role { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .updated-at  { font-size: 10px; color: var(--muted); margin-top: 8px; opacity: 0.7; }
+
+    /* ── Toggle ── */
+    .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 14px; padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .toggle-label { font-size: 12px; color: var(--muted); }
+    .toggle { position: relative; width: 42px; height: 24px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: #333;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    input:checked + .slider { background: var(--available); }
+    input:checked + .slider::before { transform: translateX(18px); }
+
+    .delete-btn {
+      position: absolute; top: 10px; right: 10px;
+      background: none; border: none;
+      color: var(--muted); font-size: 16px; cursor: pointer;
+      opacity: 0; transition: opacity 0.15s;
+      line-height: 1;
+    }
+    .member-card:hover .delete-btn { opacity: 1; }
+    .delete-btn:hover { color: #ef4444; }
+
+    /* ── Add member modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 360px;
+      max-width: 95vw;
+    }
+    .modal h2 { font-size: 1.1rem; margin-bottom: 1.2rem; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 5px; }
+    .form-group input {
+      width: 100%; padding: 9px 12px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 14px;
+      outline: none; transition: border-color 0.15s;
+    }
+    .form-group input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+    .btn-cancel {
+      flex: 1; padding: 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); cursor: pointer; font-size: 14px;
+    }
+    .btn-submit {
+      flex: 1; padding: 10px; border-radius: 8px;
+      border: none; background: var(--accent);
+      color: #fff; cursor: pointer; font-size: 14px; font-weight: 600;
+    }
+    .btn-submit:hover { opacity: 0.85; }
+
+    /* ── Empty / Error ── */
+    #empty-msg {
+      display: none;
+      text-align: center; padding: 3rem;
+      color: var(--muted); font-size: 14px;
+      grid-column: 1 / -1;
+    }
+
+    /* ── Saving indicator ── */
+    .saving-dot {
+      position: absolute; bottom: 10px; right: 42px;
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--available);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .saving-dot.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Team Availability</h1>
+    <p>Changes sync to SQLite database in real time</p>
+  </div>
+</header>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat-card">
+    <div class="label">Total</div>
+    <div class="value" id="stat-total">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Available</div>
+    <div class="value green" id="stat-available">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Busy</div>
+    <div class="value orange" id="stat-busy">—</div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <button class="filter-btn active" data-filter="all"       onclick="setFilter(this)">All</button>
+  <button class="filter-btn"        data-filter="available" onclick="setFilter(this)">Available</button>
+  <button class="filter-btn"        data-filter="busy"      onclick="setFilter(this)">Busy</button>
+  <button class="add-btn" onclick="openModal()">+ Add Member</button>
+</div>
+
+<!-- Team grid -->
+<div id="team-grid">
+  <p id="empty-msg">No members match this filter.</p>
+</div>
+
+<!-- Add member modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>Add Team Member</h2>
+    <div class="form-group">
+      <label>Full name</label>
+      <input type="text" id="input-name" placeholder="e.g. Ashu Tanveer" />
+    </div>
+    <div class="form-group">
+      <label>Role</label>
+      <input type="text" id="input-role" placeholder="e.g. ML Engineer" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-submit" onclick="addMember()">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = "http://127.0.0.1:8000";
+  const COLORS = ["#6c63ff","#22c55e","#f97316","#0ea5e9","#ec4899","#a78bfa"];
+  let activeFilter = "all";
+
+  // ── Fetch helpers ──────────────────────────────────────────────
+  async function api(path, method = "GET", body = null) {
+    const opts = {
+      method,
+      headers: { "Content-Type": "application/json" },
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API + path, opts);
+    if (!res.ok) throw new Error(await res.text());
+    if (method === "DELETE") return null;
+    return res.json();
+  }
+
+  // ── Load + render all members ──────────────────────────────────
+  async function loadMembers() {
+    try {
+      const [members, stats] = await Promise.all([
+        api("/members"),
+        api("/stats"),
+      ]);
+      renderGrid(members);
+      renderStats(stats);
+    } catch (e) {
+      document.getElementById("team-grid").innerHTML =
+        `<p style="color:#ef4444;grid-column:1/-1">⚠️ Cannot reach backend. Is the server running?<br><small>${e.message}</small></p>`;
+    }
+  }
+
+  // ── Render stats ───────────────────────────────────────────────
+  function renderStats({ total, available, busy }) {
+    document.getElementById("stat-total").textContent     = total;
+    document.getElementById("stat-available").textContent = available;
+    document.getElementById("stat-busy").textContent      = busy;
+  }
+
+  // ── Render grid ────────────────────────────────────────────────
+  function renderGrid(members) {
+    const grid = document.getElementById("team-grid");
+    // Keep empty-msg element, clear cards
+    grid.querySelectorAll(".member-card").forEach(c => c.remove());
+
+    const filtered = members.filter(m => {
+      if (activeFilter === "available") return m.available;
+      if (activeFilter === "busy")      return !m.available;
+      return true;
+    });
+
+    const empty = document.getElementById("empty-msg");
+    empty.style.display = filtered.length === 0 ? "block" : "none";
+
+    filtered.forEach(m => grid.appendChild(buildCard(m)));
+  }
+
+  // ── Build one card ─────────────────────────────────────────────
+  function buildCard(m) {
+    const color  = COLORS[m.id % COLORS.length];
+    const initials = m.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
+    const statusClass = m.available ? "available" : "busy";
+    const statusLabel = m.available ? "Available" : "Busy";
+    const updated = m.updated_at
+      ? new Date(m.updated_at + "Z").toLocaleString()
+      : "";
+
+    const card = document.createElement("div");
+    card.className = `member-card ${statusClass}`;
+    card.dataset.id = m.id;
+    card.dataset.available = m.available ? "1" : "0";
+
+    card.innerHTML = `
+      <button class="delete-btn" title="Remove" onclick="deleteMember(${m.id})">✕</button>
+      <div class="saving-dot" id="dot-${m.id}"></div>
+
+      <div class="card-header">
+        <div class="avatar" style="background:${color}22; color:${color}">${initials}</div>
+        <span class="badge ${statusClass}" id="badge-${m.id}">${statusLabel}</span>
+      </div>
+
+      <div class="member-name">${m.name}</div>
+      <div class="member-role">${m.role}</div>
+      <div class="updated-at" id="updated-${m.id}">${updated ? "Updated " + updated : ""}</div>
+
+      <div class="card-footer">
+        <span class="toggle-label">Set available</span>
+        <label class="toggle" aria-label="Toggle ${m.name}">
+          <input type="checkbox" ${m.available ? "checked" : ""}
+                 onchange="toggleAvailability(${m.id}, this)" />
+          <span class="slider"></span>
+        </label>
+      </div>
+    `;
+    return card;
+  }
+
+  // ── Toggle availability ─────────────────────────────────────────
+  async function toggleAvailability(id, checkbox) {
+    const available = checkbox.checked;
+    const card = document.querySelector(`.member-card[data-id="${id}"]`);
+
+    // Optimistic UI update
+    card.className = `member-card ${available ? "available" : "busy"}`;
+    card.dataset.available = available ? "1" : "0";
+    const badge = document.getElementById(`badge-${id}`);
+    badge.className = `badge ${available ? "available" : "busy"}`;
+    badge.textContent = available ? "Available" : "Busy";
+
+    // Flash saving dot
+    const dot = document.getElementById(`dot-${id}`);
+    dot.classList.add("show");
+
+    try {
+      const updated = await api(`/members/${id}/availability`, "PATCH", { available });
+      // Sync timestamp from server
+      const ts = document.getElementById(`updated-${id}`);
+      ts.textContent = updated.updated_at
+        ? "Updated " + new Date(updated.updated_at + "Z").toLocaleString()
+        : "";
+      // Refresh stats
+      const stats = await api("/stats");
+      renderStats(stats);
+    } catch (e) {
+      alert("Failed to update: " + e.message);
+      // Revert checkbox
+      checkbox.checked = !available;
+    } finally {
+      setTimeout(() => dot.classList.remove("show"), 1000);
+    }
+  }
+
+  // ── Delete member ──────────────────────────────────────────────
+  async function deleteMember(id) {
+    if (!confirm("Remove this member?")) return;
+    await api(`/members/${id}`, "DELETE");
+    loadMembers();
+  }
+
+  // ── Add member modal ───────────────────────────────────────────
+  function openModal()  { document.getElementById("modal").classList.add("open"); }
+  function closeModal() { document.getElementById("modal").classList.remove("open"); }
+
+  async function addMember() {
+    const name = document.getElementById("input-name").value.trim();
+    const role = document.getElementById("input-role").value.trim();
+    if (!name || !role) { alert("Please fill in both fields."); return; }
+    await api("/members", "POST", { name, role, available: true });
+    document.getElementById("input-name").value = "";
+    document.getElementById("input-role").value = "";
+    closeModal();
+    loadMembers();
+  }
+
+  // Close modal on overlay click
+  document.getElementById("modal").addEventListener("click", function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  // ── Filter ─────────────────────────────────────────────────────
+  function setFilter(btn) {
+    activeFilter = btn.dataset.filter;
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    loadMembers();
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────
+  loadMembers();
+</script>
+</body>
+</html>
